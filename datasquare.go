@@ -92,8 +92,6 @@ func (ds *dataSquare) extendSquare(extendedWidth uint, fillerChunk []byte) error
 }
 
 func (ds *dataSquare) rowSlice(x uint, y uint, length uint) [][]byte {
-	// ds.mtx.RLock()
-	// defer ds.mtx.RUnlock()
 	return ds.square[x][y : y+length]
 }
 
@@ -103,8 +101,6 @@ func (ds *dataSquare) Row(x uint) [][]byte {
 }
 
 func (ds *dataSquare) setRowSlice(x uint, y uint, newRow [][]byte) error {
-	// ds.mtx.Lock()
-	// defer ds.mtx.Unlock()
 	for i := uint(0); i < uint(len(newRow)); i++ {
 		if len(newRow[i]) != int(ds.chunkSize) {
 			return errors.New("invalid chunk size")
@@ -121,8 +117,6 @@ func (ds *dataSquare) setRowSlice(x uint, y uint, newRow [][]byte) error {
 }
 
 func (ds *dataSquare) columnSlice(x uint, y uint, length uint) [][]byte {
-	// ds.mtx.RLock()
-	// defer ds.mtx.RUnlock()
 	columnSlice := make([][]byte, length)
 	for i := uint(0); i < length; i++ {
 		columnSlice[i] = ds.square[x+i][y]
@@ -137,8 +131,6 @@ func (ds *dataSquare) Column(y uint) [][]byte {
 }
 
 func (ds *dataSquare) setColumnSlice(x uint, y uint, newColumn [][]byte) error {
-	// ds.mtx.Lock()
-	// defer ds.mtx.Unlock()
 	for i := uint(0); i < uint(len(newColumn)); i++ {
 		if len(newColumn[i]) != int(ds.chunkSize) {
 			return errors.New("invalid chunk size")
@@ -154,8 +146,6 @@ func (ds *dataSquare) setColumnSlice(x uint, y uint, newColumn [][]byte) error {
 }
 
 func (ds *dataSquare) resetRoots() {
-	// ds.mtx.Lock()
-	// defer ds.mtx.Unlock()
 	ds.rowRoots = nil
 	ds.columnRoots = nil
 }
@@ -198,8 +188,6 @@ func (ds *dataSquare) RowRoots() [][]byte {
 
 // ColumnRoots returns the Merkle roots of all the columns in the square.
 func (ds *dataSquare) ColumnRoots() [][]byte {
-	// ds.mtx.RLock()
-	// defer ds.mtx.RLock()
 	if ds.columnRoots == nil {
 		ds.computeRoots()
 	}
@@ -241,8 +229,6 @@ func (ds *dataSquare) computeColumnProof(x uint, y uint) ([]byte, [][]byte, uint
 
 // Cell returns a single chunk at a specific cell.
 func (ds *dataSquare) Cell(x uint, y uint) []byte {
-	// ds.mtx.RLock()
-	// defer ds.mtx.RUnlock()
 	cell := make([]byte, ds.chunkSize)
 	copy(cell, ds.square[x][y])
 	return cell
@@ -254,8 +240,6 @@ func (ds *dataSquare) setCell(x uint, y uint, newChunk []byte) {
 }
 
 func (ds *dataSquare) flattened() [][]byte {
-	// ds.mtx.RLock()
-	// defer ds.mtx.RUnlock()
 	flattened := [][]byte(nil)
 	for _, data := range ds.square {
 		flattened = append(flattened, data...)
