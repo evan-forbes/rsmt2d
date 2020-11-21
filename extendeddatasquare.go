@@ -178,6 +178,9 @@ func (eds *ExtendedDataSquare) fillDown(col uint, codec Codec) error {
 }
 
 func (eds *ExtendedDataSquare) parallelExtend(workers int) error {
+	if workers == 0 {
+		workers = 1
+	}
 	// extend the datasquare with empty data
 	eds.originalDataWidth = eds.width
 	if err := eds.extendSquare(eds.width, bytes.Repeat([]byte{0}, int(eds.chunkSize))); err != nil {
@@ -195,8 +198,8 @@ func (eds *ExtendedDataSquare) parallelExtend(workers int) error {
 	// |   E   |
 	// |       |
 	//  -------
-	wg := sync.WaitGroup{}
-	errc := make(chan error, eds.originalDataWidth)
+
+	// feed the first set of jobs for datasquare extension
 	phaseOneJobs := make(chan uint, eds.originalDataWidth)
 	go func() {
 		defer close(phaseOneJobs)
@@ -205,36 +208,35 @@ func (eds *ExtendedDataSquare) parallelExtend(workers int) error {
 		}
 	}()
 
+	// work
+	phaseOneWork := func(wg *sync.WaitGroup, jobs <-chan uint, errs chan<- error) {
+		defer wg.Done()
+		codec := NewRSGF8Codec()
+		for job := range jobs {
+			// encode data vertically
+			err := eds.fillDown(job, codec)
+			if err != nil {
+				errs <- err
+				return
+			}
+			// encode data horizontally
+			err = eds.fillRight(job, codec)
+			if err != nil {
+				errs <- err
+				return
+			}
+			errs <- nil
+		}
+	}
+	wg := sync.WaitGroup{}
+	errc := make(chan error, eds.originalDataWidth)
+	// spin up designated number of goroutines
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
-
-		// pass jobs to workers and collect errors
-		go func(jobs <-chan uint, errs chan<- error) {
-			defer wg.Done()
-			codec := NewRSGF8Codec()
-			for job := range jobs {
-
-				// encode data vertically
-				err := eds.fillDown(job, codec)
-				if err != nil {
-
-					errs <- err
-					return
-				}
-				// encode data vertically
-				err = eds.fillRight(job, codec)
-				if err != nil {
-
-					errs <- err
-					return
-				}
-				errs <- nil
-
-			}
-
-		}(phaseOneJobs, errc)
+		go phaseOneWork(&wg, phaseOneJobs, errc)
 	}
 	wg.Wait()
+	// check for errors from phase 1
 	close(errc)
 	for err := range errc {
 		if err != nil {
@@ -253,7 +255,7 @@ func (eds *ExtendedDataSquare) parallelExtend(workers int) error {
 	// |   E → |   E   |
 	// |       |       |
 	//  ------- -------
-	errc = make(chan error, eds.originalDataWidth)
+
 	phaseTwoJobs := make(chan uint, eds.originalDataWidth)
 	go func() {
 		defer close(phaseTwoJobs)
@@ -262,22 +264,26 @@ func (eds *ExtendedDataSquare) parallelExtend(workers int) error {
 		}
 	}()
 
+	phaseTwoWork := func(wg *sync.WaitGroup, jobs <-chan uint, errs chan<- error) {
+		defer wg.Done()
+		codec := NewRSGF8Codec()
+		for job := range jobs {
+			// encode data vertically
+			err := eds.fillRight(job, codec)
+			if err != nil {
+				errs <- err
+				return
+			}
+			errs <- nil
+		}
+	}
+
+	// spin up designated number of goroutines for phase 2
+	errc = make(chan error, eds.originalDataWidth)
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		// pass jobs to workers and collect errors
-		go func(jobs <-chan uint, errs chan<- error) {
-			defer wg.Done()
-			codec := NewRSGF8Codec()
-			for job := range jobs {
-				// encode data vertically
-				err := eds.fillRight(job, codec)
-				if err != nil {
-					errs <- err
-					return
-				}
-				errs <- nil
-			}
-		}(phaseTwoJobs, errc)
+		go phaseTwoWork(&wg, phaseTwoJobs, errc)
 	}
 
 	wg.Wait()
