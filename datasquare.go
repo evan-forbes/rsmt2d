@@ -5,8 +5,6 @@ import (
 	"errors"
 	"hash"
 	"math"
-
-	"github.com/NebulousLabs/merkletree"
 )
 
 type dataSquare struct {
@@ -16,9 +14,10 @@ type dataSquare struct {
 	rowRoots    [][]byte
 	columnRoots [][]byte
 	hasher      hash.Hash
+	prover      func() Prover
 }
 
-func newDataSquare(data [][]byte) (*dataSquare, error) {
+func newDataSquare(data [][]byte, p func() Prover) (*dataSquare, error) {
 	width := int(math.Ceil(math.Sqrt(float64(len(data)))))
 	if int(math.Pow(float64(width), 2)) != len(data) {
 		return nil, errors.New("number of chunks must be a square number")
@@ -41,6 +40,7 @@ func newDataSquare(data [][]byte) (*dataSquare, error) {
 		width:     uint(width),
 		chunkSize: uint(chunkSize),
 		hasher:    sha256.New(),
+		prover:    p,
 	}, nil
 }
 
@@ -149,22 +149,19 @@ func (ds *dataSquare) resetRoots() {
 func (ds *dataSquare) computeRoots() {
 	rowRoots := make([][]byte, ds.width)
 	columnRoots := make([][]byte, ds.width)
-	var rowTree *merkletree.Tree
-	var columnTree *merkletree.Tree
-	var rowData [][]byte
-	var columnData [][]byte
+
 	for i := uint(0); i < ds.width; i++ {
-		rowTree = merkletree.New(ds.hasher)
-		columnTree = merkletree.New(ds.hasher)
-		rowData = ds.Row(i)
-		columnData = ds.Column(i)
-		for j := uint(0); j < ds.width; j++ {
-			rowTree.Push(rowData[j])
-			columnTree.Push(columnData[j])
+		rowProof, err := ds.prover().Prove(i, ds.Row(i))
+		if err != nil {
+			panic(err)
+		}
+		colProof, err := ds.prover().Prove(i, ds.Column(i))
+		if err != nil {
+			panic(err)
 		}
 
-		rowRoots[i] = rowTree.Root()
-		columnRoots[i] = columnTree.Root()
+		rowRoots[i] = rowProof.Root
+		columnRoots[i] = colProof.Root
 	}
 
 	ds.rowRoots = rowRoots
@@ -190,35 +187,25 @@ func (ds *dataSquare) ColumnRoots() [][]byte {
 }
 
 func (ds *dataSquare) computeRowProof(x uint, y uint) ([]byte, [][]byte, uint, uint, error) {
-	tree := merkletree.New(ds.hasher)
-	err := tree.SetIndex(uint64(y))
+	p := ds.prover()
+
+	proof, err := p.Prove(y, ds.Row(x))
 	if err != nil {
 		return nil, nil, 0, 0, err
 	}
-	data := ds.Row(x)
-
-	for i := uint(0); i < ds.width; i++ {
-		tree.Push(data[i])
-	}
-
-	merkleRoot, proof, proofIndex, numLeaves := tree.Prove()
-	return merkleRoot, proof, uint(proofIndex), uint(numLeaves), nil
+	// could also just return the proof
+	return proof.Root, proof.Set, uint(proof.Index), uint(proof.Leaves), nil
 }
 
 func (ds *dataSquare) computeColumnProof(x uint, y uint) ([]byte, [][]byte, uint, uint, error) {
-	tree := merkletree.New(ds.hasher)
-	err := tree.SetIndex(uint64(x))
+	p := ds.prover()
+
+	proof, err := p.Prove(x, ds.Column(y))
 	if err != nil {
 		return nil, nil, 0, 0, err
 	}
-	data := ds.Column(y)
-
-	for i := uint(0); i < ds.width; i++ {
-		tree.Push(data[i])
-	}
-
-	merkleRoot, proof, proofIndex, numLeaves := tree.Prove()
-	return merkleRoot, proof, uint(proofIndex), uint(numLeaves), nil
+	// could alternatively just return the proof
+	return proof.Root, proof.Set, uint(proof.Index), uint(proof.Leaves), nil
 }
 
 // Cell returns a single chunk at a specific cell.

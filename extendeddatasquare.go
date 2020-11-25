@@ -23,7 +23,8 @@ func ComputeExtendedDataSquare(data [][]byte, codecType CodecType) (*ExtendedDat
 		}
 	}
 
-	ds, err := newDataSquare(data)
+	// todo(evan): switch to nmt prover
+	ds, err := newDataSquare(data, NewDefaultProver)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +39,7 @@ func ComputeExtendedDataSquare(data [][]byte, codecType CodecType) (*ExtendedDat
 }
 
 // ImportExtendedDataSquare imports an extended data square, represented as flattened chunks of data.
-func ImportExtendedDataSquare(data [][]byte, codecType CodecType) (*ExtendedDataSquare, error) {
+func ImportExtendedDataSquare(data [][]byte, codecType CodecType, p func() Prover) (*ExtendedDataSquare, error) {
 	if codec, ok := codecs[codecType]; !ok {
 		return nil, errors.New("unsupported codecType")
 	} else {
@@ -46,7 +47,7 @@ func ImportExtendedDataSquare(data [][]byte, codecType CodecType) (*ExtendedData
 			return nil, errors.New("number of chunks exceeds the maximum")
 		}
 	}
-	ds, err := newDataSquare(data)
+	ds, err := newDataSquare(data, p)
 	if err != nil {
 		return nil, err
 	}
@@ -125,6 +126,6 @@ func (eds *ExtendedDataSquare) erasureExtendSquare() error {
 }
 
 func (eds *ExtendedDataSquare) deepCopy() (ExtendedDataSquare, error) {
-	eds, err := ImportExtendedDataSquare(eds.flattened(), eds.codec)
+	eds, err := ImportExtendedDataSquare(eds.flattened(), eds.codec, eds.prover)
 	return *eds, err
 }
