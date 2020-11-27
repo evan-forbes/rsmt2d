@@ -151,17 +151,8 @@ func (ds *dataSquare) computeRoots() {
 	columnRoots := make([][]byte, ds.width)
 
 	for i := uint(0); i < ds.width; i++ {
-		rowProof, err := ds.prover().Prove(i, ds.Row(i))
-		if err != nil {
-			panic(err)
-		}
-		colProof, err := ds.prover().Prove(i, ds.Column(i))
-		if err != nil {
-			panic(err)
-		}
-
-		rowRoots[i] = rowProof.Root
-		columnRoots[i] = colProof.Root
+		rowRoots[i] = ds.prover().Root(i, ds.Row(i))
+		columnRoots[i] = ds.prover().Root(i, ds.Column(i))
 	}
 
 	ds.rowRoots = rowRoots
