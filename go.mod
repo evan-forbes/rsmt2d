@@ -9,6 +9,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	// only needed if built with go build -tags leopard
 	github.com/lazyledger/go-leopard v0.0.0-20200604113236-298f93361181
+	github.com/lazyledger/nmt v0.0.0-20201112204856-4bc77a77815c
 	github.com/spacemonkeygo/errors v0.0.0-20171212215202-9064522e9fd1 // indirect
 	github.com/stretchr/testify v1.5.1
 	github.com/vivint/infectious v0.0.0-20190108171102-2455b059135b

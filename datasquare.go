@@ -1,23 +1,19 @@
 package rsmt2d
 
 import (
-	"crypto/sha256"
 	"errors"
-	"hash"
 	"math"
+
+	"github.com/lazyledger/nmt/namespace"
 )
 
 type dataSquare struct {
-	square      [][][]byte
-	width       uint
-	chunkSize   uint
-	rowRoots    [][]byte
-	columnRoots [][]byte
-	hasher      hash.Hash
-	prover      func() Prover
+	square    [][][]byte
+	width     uint
+	chunkSize uint
 }
 
-func newDataSquare(data [][]byte, p func() Prover) (*dataSquare, error) {
+func newDataSquare(data [][]byte) (*dataSquare, error) {
 	width := int(math.Ceil(math.Sqrt(float64(len(data)))))
 	if int(math.Pow(float64(width), 2)) != len(data) {
 		return nil, errors.New("number of chunks must be a square number")
@@ -39,14 +35,7 @@ func newDataSquare(data [][]byte, p func() Prover) (*dataSquare, error) {
 		square:    square,
 		width:     uint(width),
 		chunkSize: uint(chunkSize),
-		hasher:    sha256.New(),
-		prover:    p,
 	}, nil
-}
-
-// SetHasher sets the hasher used for computing Merkle roots.
-func (ds *dataSquare) SetHasher(hasher hash.Hash) {
-	ds.hasher = hasher
 }
 
 func (ds *dataSquare) extendSquare(extendedWidth uint, fillerChunk []byte) error {
@@ -81,8 +70,6 @@ func (ds *dataSquare) extendSquare(extendedWidth uint, fillerChunk []byte) error
 	ds.square = newSquare
 	ds.width = newWidth
 
-	ds.resetRoots()
-
 	return nil
 }
 
@@ -106,9 +93,29 @@ func (ds *dataSquare) setRowSlice(x uint, y uint, newRow [][]byte) error {
 		ds.square[x][y+i] = newRow[i]
 	}
 
-	ds.resetRoots()
-
 	return nil
+}
+
+func (ds *dataSquare) nameRow(x, y uint, names []namespace.ID) error {
+	// ensure uniform namespace size
+	for _, id := range names {
+		if id.Size() != names[0].Size() {
+			return errors.New("variable size of namespace.IDs")
+		}
+	}
+
+	for i := uint(0); i < uint(len(names)); i++ {
+		ds.square[x][y+i] = append(names[i], ds.square[x][y+i]...)
+	}
+	return nil
+}
+
+func (ds *dataSquare) uniformNameRow(x, y uint, name namespace.ID) {
+	for i := uint(0); i < uint(len(ds.square[x]))-y; i++ {
+		prefix := make([]byte, name.Size())
+		copy(prefix, name)
+		ds.square[x][y+i] = append(prefix, ds.square[x][y+i]...)
+	}
 }
 
 func (ds *dataSquare) columnSlice(x uint, y uint, length uint) [][]byte {
@@ -136,76 +143,7 @@ func (ds *dataSquare) setColumnSlice(x uint, y uint, newColumn [][]byte) error {
 		ds.square[x+i][y] = newColumn[i]
 	}
 
-	ds.resetRoots()
-
 	return nil
-}
-
-func (ds *dataSquare) resetRoots() {
-	ds.rowRoots = nil
-	ds.columnRoots = nil
-}
-
-func (ds *dataSquare) computeRoots() {
-	rowRoots := make([][]byte, ds.width)
-	columnRoots := make([][]byte, ds.width)
-
-	for i := uint(0); i < ds.width; i++ {
-		rowProof, err := ds.prover().Prove(i, ds.Row(i))
-		if err != nil {
-			panic(err)
-		}
-		colProof, err := ds.prover().Prove(i, ds.Column(i))
-		if err != nil {
-			panic(err)
-		}
-
-		rowRoots[i] = rowProof.Root
-		columnRoots[i] = colProof.Root
-	}
-
-	ds.rowRoots = rowRoots
-	ds.columnRoots = columnRoots
-}
-
-// RowRoots returns the Merkle roots of all the rows in the square.
-func (ds *dataSquare) RowRoots() [][]byte {
-	if ds.rowRoots == nil {
-		ds.computeRoots()
-	}
-
-	return ds.rowRoots
-}
-
-// ColumnRoots returns the Merkle roots of all the columns in the square.
-func (ds *dataSquare) ColumnRoots() [][]byte {
-	if ds.columnRoots == nil {
-		ds.computeRoots()
-	}
-
-	return ds.columnRoots
-}
-
-func (ds *dataSquare) computeRowProof(x uint, y uint) ([]byte, [][]byte, uint, uint, error) {
-	p := ds.prover()
-
-	proof, err := p.Prove(y, ds.Row(x))
-	if err != nil {
-		return nil, nil, 0, 0, err
-	}
-	// could also just return the proof
-	return proof.Root, proof.Set, uint(proof.Index), uint(proof.Leaves), nil
-}
-
-func (ds *dataSquare) computeColumnProof(x uint, y uint) ([]byte, [][]byte, uint, uint, error) {
-	p := ds.prover()
-
-	proof, err := p.Prove(x, ds.Column(y))
-	if err != nil {
-		return nil, nil, 0, 0, err
-	}
-	// could alternatively just return the proof
-	return proof.Root, proof.Set, uint(proof.Index), uint(proof.Leaves), nil
 }
 
 // Cell returns a single chunk at a specific cell.
@@ -217,7 +155,6 @@ func (ds *dataSquare) Cell(x uint, y uint) []byte {
 
 func (ds *dataSquare) setCell(x uint, y uint, newChunk []byte) {
 	ds.square[x][y] = newChunk
-	ds.resetRoots()
 }
 
 func (ds *dataSquare) flattened() [][]byte {

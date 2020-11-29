@@ -43,7 +43,7 @@ func (e *UnrepairableDataSquareError) Error() string {
 
 // RepairExtendedDataSquare repairs an incomplete extended data square, against its expected row and column merkle roots.
 // Missing data chunks should be represented as nil.
-func RepairExtendedDataSquare(rowRoots [][]byte, columnRoots [][]byte, data [][]byte, codec CodecType) (*ExtendedDataSquare, error) {
+func RepairExtendedDataSquare(rowRoots [][]byte, columnRoots [][]byte, data [][]byte, codec CodecType, vcp VectorCommitmentProver) (*ExtendedDataSquare, error) {
 	matrixData := make([]float64, len(data))
 	var chunkSize int
 	for i := range data {
@@ -69,19 +69,19 @@ func RepairExtendedDataSquare(rowRoots [][]byte, columnRoots [][]byte, data [][]
 		}
 	}
 
-	eds, err := ImportExtendedDataSquare(data, codec, NewDefaultProver)
+	eds, err := ImportExtendedDataSquare(data, codec)
 	if err != nil {
 		return nil, err
 	}
 
 	matrix := mat.NewDense(int(eds.width), int(eds.width), matrixData)
 
-	err = eds.prerepairSanityCheck(rowRoots, columnRoots, *matrix)
+	err = eds.prerepairSanityCheck(rowRoots, columnRoots, *matrix, vcp)
 	if err != nil {
 		return nil, err
 	}
 
-	err = eds.solveCrossword(rowRoots, columnRoots, *matrix)
+	err = eds.solveCrossword(rowRoots, columnRoots, *matrix, vcp)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func RepairExtendedDataSquare(rowRoots [][]byte, columnRoots [][]byte, data [][]
 	return eds, err
 }
 
-func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][]byte, mask mat.Dense) error {
+func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][]byte, mask mat.Dense, vcp VectorCommitmentProver) error {
 	// Keep repeating until the square is solved
 	var solved bool
 	var progressMade bool
@@ -164,11 +164,11 @@ func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][
 
 						// Check that rebuilt vector matches given merkle root
 						if mode == row {
-							if !bytes.Equal(eds.RowRoots()[i], rowRoots[i]) {
+							if !bytes.Equal(vcp.Commitment(Row, i), rowRoots[i]) {
 								return &ByzantineRowError{i, edsBackup}
 							}
 						} else if mode == column {
-							if !bytes.Equal(eds.ColumnRoots()[i], columnRoots[i]) {
+							if !bytes.Equal(vcp.Commitment(Column, i), columnRoots[i]) {
 								return &ByzantineColumnError{i, edsBackup}
 							}
 						}
@@ -178,12 +178,12 @@ func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][
 							if vectorMask.AtVec(int(j)) == 0 {
 								if mode == row {
 									adjMask := mask.ColView(int(j))
-									if vecNumTrue(adjMask) == adjMask.Len()-1 && !bytes.Equal(eds.ColumnRoots()[j], columnRoots[j]) {
+									if vecNumTrue(adjMask) == adjMask.Len()-1 && !bytes.Equal(vcp.Commitment(Column, i), columnRoots[j]) {
 										return &ByzantineColumnError{j, edsBackup}
 									}
 								} else if mode == column {
 									adjMask := mask.RowView(int(j))
-									if vecNumTrue(adjMask) == adjMask.Len()-1 && !bytes.Equal(eds.RowRoots()[j], rowRoots[j]) {
+									if vecNumTrue(adjMask) == adjMask.Len()-1 && !bytes.Equal(vcp.Commitment(Row, i), rowRoots[j]) {
 										return &ByzantineRowError{j, edsBackup}
 									}
 								}
@@ -217,13 +217,13 @@ func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][
 	return nil
 }
 
-func (eds *ExtendedDataSquare) prerepairSanityCheck(rowRoots [][]byte, columnRoots [][]byte, mask mat.Dense) error {
+func (eds *ExtendedDataSquare) prerepairSanityCheck(rowRoots [][]byte, columnRoots [][]byte, mask mat.Dense, vcp VectorCommitmentProver) error {
 	var shares [][]byte
 	var err error
 	for i := uint(0); i < eds.width; i++ {
 		rowMask := mask.RowView(int(i))
 		columnMask := mask.ColView(int(i))
-		if (vecIsTrue(rowMask) && !bytes.Equal(rowRoots[i], eds.RowRoots()[i])) || (vecIsTrue(columnMask) && !bytes.Equal(columnRoots[i], eds.ColumnRoots()[i])) {
+		if (vecIsTrue(rowMask) && !bytes.Equal(rowRoots[i], vcp.Commitment(Row, i))) || (vecIsTrue(columnMask) && !bytes.Equal(columnRoots[i], vcp.Commitment(Column, i))) {
 			return errors.New("bad roots input")
 		}
 

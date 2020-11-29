@@ -4,6 +4,9 @@ package rsmt2d
 import (
 	"bytes"
 	"errors"
+	"fmt"
+
+	"github.com/lazyledger/nmt/namespace"
 )
 
 // ExtendedDataSquare represents an extended piece of data.
@@ -23,8 +26,7 @@ func ComputeExtendedDataSquare(data [][]byte, codecType CodecType) (*ExtendedDat
 		}
 	}
 
-	// todo(evan): switch to nmt prover
-	ds, err := newDataSquare(data, NewDefaultProver)
+	ds, err := newDataSquare(data)
 	if err != nil {
 		return nil, err
 	}
@@ -38,8 +40,22 @@ func ComputeExtendedDataSquare(data [][]byte, codecType CodecType) (*ExtendedDat
 	return &eds, nil
 }
 
+// ComputeNamedExtendedDataSquare computes the extended data square for some chunks of namespaced data.
+func ComputeNamedExtendedDataSquare(data [][]byte, names []namespace.ID, codecType CodecType) (*ExtendedDataSquare, error) {
+	eds, err := ComputeExtendedDataSquare(data, codecType)
+	if err != nil {
+		return nil, err
+	}
+	// prefix extended data square with namespace IDs
+	err = eds.addNameAsPrefix(names)
+	if err != nil {
+		return nil, err
+	}
+	return eds, nil
+}
+
 // ImportExtendedDataSquare imports an extended data square, represented as flattened chunks of data.
-func ImportExtendedDataSquare(data [][]byte, codecType CodecType, p func() Prover) (*ExtendedDataSquare, error) {
+func ImportExtendedDataSquare(data [][]byte, codecType CodecType) (*ExtendedDataSquare, error) {
 	if codec, ok := codecs[codecType]; !ok {
 		return nil, errors.New("unsupported codecType")
 	} else {
@@ -47,7 +63,7 @@ func ImportExtendedDataSquare(data [][]byte, codecType CodecType, p func() Prove
 			return nil, errors.New("number of chunks exceeds the maximum")
 		}
 	}
-	ds, err := newDataSquare(data, p)
+	ds, err := newDataSquare(data)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +141,45 @@ func (eds *ExtendedDataSquare) erasureExtendSquare() error {
 	return nil
 }
 
+// addNameAsPrefix adds namespaces IDs to the extended datasquare. Assumes that
+// data has already been erasured
+func (eds *ExtendedDataSquare) addNameAsPrefix(ids []namespace.ID) error {
+	// ensure appropriate length
+	count := eds.originalDataWidth * eds.originalDataWidth
+	if uint(len(ids)) != count {
+		return fmt.Errorf("unexpected number of IDs: wanted %d got %d", count, len(ids))
+	}
+	// create the appropriate sized parity data
+	parityNamespace := genParityNameSpaceID(int8(ids[0].Size()))
+	// add names to each row
+	for r := uint(0); r < eds.width; r++ {
+		// naming Q0 and Q1
+		if r < eds.originalDataWidth {
+			// name Q0 portion of row
+			err := eds.nameRow(r, 0, ids[r*eds.originalDataWidth:(r+1)*eds.originalDataWidth])
+			if err != nil {
+				return err
+			}
+			// name Q1 portion of row
+			eds.uniformNameRow(r, eds.originalDataWidth, parityNamespace)
+			continue
+		}
+		// naming Q2 and Q3
+		eds.uniformNameRow(r, 0, parityNamespace)
+	}
+	return nil
+}
+
+// genParityNameSpaceIDs creates filler namespace.ID s for parity data
+func genParityNameSpaceID(size int8) namespace.ID {
+	var parityID namespace.ID
+	for i := int8(0); i < size; i++ {
+		parityID = append(parityID, 0xFF)
+	}
+	return parityID
+}
+
 func (eds *ExtendedDataSquare) deepCopy() (ExtendedDataSquare, error) {
-	eds, err := ImportExtendedDataSquare(eds.flattened(), eds.codec, eds.prover)
+	eds, err := ImportExtendedDataSquare(eds.flattened(), eds.codec)
 	return *eds, err
 }
