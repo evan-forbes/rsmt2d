@@ -75,6 +75,5 @@ func mockDecodableData(count int, _codecType CodecType) [][]byte {
 			output[i] = []byte{}
 		}
 	}
-	fmt.Println(output)
 	return output
 }

@@ -4,6 +4,7 @@ package rsmt2d
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -126,18 +127,18 @@ func (eds *ExtendedDataSquare) erasureExtendSquare() error {
 }
 
 // ParallelComputeExtendedDataSquare computes the extended data square for some chunks of data in a parallel fashion.
-func ParallelComputeExtendedDataSquare(data [][]byte, codec Codec, workers int) (*ExtendedDataSquare, error) {
-	if len(data) > codec.maxChunks() {
+func ParallelComputeExtendedDataSquare(data [][]byte, codec CodecType, workers int) (*ExtendedDataSquare, error) {
+	if len(data) > codecs[codec].maxChunks() {
 		return nil, errors.New("number of chunks exceeds the maximum")
 	}
 
-	ds, err := newDataSquare(data)
+	ds, err := newDataSquare(data, NewDefaultTree)
 	if err != nil {
 		return nil, err
 	}
 
 	eds := ExtendedDataSquare{dataSquare: ds}
-	err = eds.parallelExtend(workers)
+	err = eds.parallelExtend(workers, codec)
 	if err != nil {
 		return nil, err
 	}
@@ -147,14 +148,12 @@ func ParallelComputeExtendedDataSquare(data [][]byte, codec Codec, workers int) 
 
 // fillRight encodes the original data in the data square horizontally. Assumes
 // that the data square has been extended
-func (eds *ExtendedDataSquare) fillRight(row uint, codec Codec) error {
+func (eds *ExtendedDataSquare) fillRight(row uint, codec CodecType) error {
 	// Extend horizontally
-	shares, err := codec.encode(eds.rowSlice(row, 0, eds.originalDataWidth))
+	shares, err := Encode(eds.rowSlice(row, 0, eds.originalDataWidth), codec)
 	if err != nil {
 		return err
 	}
-	eds.mtx.Lock()
-	defer eds.mtx.Unlock()
 	if err := eds.setRowSlice(row, eds.originalDataWidth, shares); err != nil {
 		return err
 	}
@@ -163,21 +162,19 @@ func (eds *ExtendedDataSquare) fillRight(row uint, codec Codec) error {
 
 // fillDown encodes the original data in the data square vertically. Assumes
 // that the data square has been extended
-func (eds *ExtendedDataSquare) fillDown(col uint, codec Codec) error {
+func (eds *ExtendedDataSquare) fillDown(col uint, codec CodecType) error {
 	// Extend vertically
-	shares, err := codec.encode(eds.columnSlice(0, col, eds.originalDataWidth))
+	shares, err := Encode(eds.columnSlice(0, col, eds.originalDataWidth), codec)
 	if err != nil {
 		return err
 	}
-	eds.mtx.Lock()
-	defer eds.mtx.Unlock()
 	if err := eds.setColumnSlice(eds.originalDataWidth, col, shares); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (eds *ExtendedDataSquare) parallelExtend(workers int) error {
+func (eds *ExtendedDataSquare) parallelExtend(workers int, codec CodecType) error {
 	if workers == 0 {
 		workers = 1
 	}
@@ -211,18 +208,17 @@ func (eds *ExtendedDataSquare) parallelExtend(workers int) error {
 	// work
 	phaseOneWork := func(wg *sync.WaitGroup, jobs <-chan uint, errs chan<- error) {
 		defer wg.Done()
-		codec := NewRSGF8Codec()
 		for job := range jobs {
 			// encode data vertically
 			err := eds.fillDown(job, codec)
 			if err != nil {
-				errs <- err
+				errs <- fmt.Errorf("failure to fill down in phase one: %s", err)
 				return
 			}
 			// encode data horizontally
 			err = eds.fillRight(job, codec)
 			if err != nil {
-				errs <- err
+				errs <- fmt.Errorf("failure to fill right in phase one: %s", err)
 				return
 			}
 			errs <- nil
@@ -266,7 +262,6 @@ func (eds *ExtendedDataSquare) parallelExtend(workers int) error {
 
 	phaseTwoWork := func(wg *sync.WaitGroup, jobs <-chan uint, errs chan<- error) {
 		defer wg.Done()
-		codec := NewRSGF8Codec()
 		for job := range jobs {
 			// encode data vertically
 			err := eds.fillRight(job, codec)

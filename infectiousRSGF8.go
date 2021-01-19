@@ -14,10 +14,6 @@ type rsGF8Codec struct {
 	infectiousCache map[int]*infectious.FEC
 }
 
-func NewRSGF8Codec() Codec {
-	return &rsGF8Codec{make(map[int]*infectious.FEC)}
-}
-
 func newRSGF8Codec() *rsGF8Codec {
 	return &rsGF8Codec{make(map[int]*infectious.FEC)}
 }

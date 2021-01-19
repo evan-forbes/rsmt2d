@@ -27,11 +27,15 @@ func TestComputeExtendedDataSquare(t *testing.T) {
 }
 
 func TestParallelComputeExtendedDataSquare(t *testing.T) {
-	codec := NewRSGF8Codec()
-	result, err := ParallelComputeExtendedDataSquare([][]byte{
-		{1}, {2},
-		{3}, {4},
-	}, codec, 16)
+	codec := RSGF8
+	result, err := ParallelComputeExtendedDataSquare(
+		[][]byte{
+			{1}, {2},
+			{3}, {4},
+		},
+		codec,
+		16,
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -41,7 +45,7 @@ func TestParallelComputeExtendedDataSquare(t *testing.T) {
 		{{5}, {14}, {19}, {41}},
 		{{9}, {26}, {47}, {69}},
 	}) {
-		t.Errorf("NewExtendedDataSquare failed for 2x2 square with chunk size 1")
+		t.Errorf("NewExtendedDataSquare failed for 2x2 square with chunk size 1 using %s", codec)
 	}
 }
 
@@ -58,7 +62,7 @@ func BenchmarkExtension(b *testing.B) {
 				fmt.Sprintf("%s size %d (extended = %d) ", _codecType, i, i*2),
 				func(b *testing.B) {
 					for n := 0; n < b.N; n++ {
-						eds, err := ComputeExtendedDataSquare(square, _codecType)
+						eds, err := ComputeExtendedDataSquare(square, _codecType, NewDefaultTree)
 						if err != nil {
 							b.Error(err)
 						}
@@ -67,6 +71,32 @@ func BenchmarkExtension(b *testing.B) {
 				},
 			)
 		}
+		fmt.Println("-------------------------------")
+	}
+}
+
+// BenchmarkExtension benchmarks extending datasquares sizes 4-128 using all supported codecs
+func BenchmarkParallelExtension(b *testing.B) {
+	for _codecType := range codecs {
+		for workers := 1; workers < 33; workers *= 2 {
+			for i := 4; i < 129; i *= 2 {
+				square := genRandDS(i)
+				b.Run(
+					fmt.Sprintf("%s %d goroutines size %d (extended = %d) ", _codecType, workers, i, i*2),
+					func(b *testing.B) {
+						for n := 0; n < b.N; n++ {
+							eds, err := ParallelComputeExtendedDataSquare(square, _codecType, workers)
+							if err != nil {
+								b.Error(err)
+							}
+							dump = eds
+						}
+					},
+				)
+			}
+			fmt.Println("-------------------------------")
+		}
+
 		fmt.Println("-------------------------------")
 	}
 }
