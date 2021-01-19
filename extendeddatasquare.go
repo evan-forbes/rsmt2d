@@ -15,7 +15,7 @@ type ExtendedDataSquare struct {
 }
 
 // ComputeExtendedDataSquare computes the extended data square for some chunks of data.
-func ComputeExtendedDataSquare(data [][]byte, codecType CodecType) (*ExtendedDataSquare, error) {
+func ComputeExtendedDataSquare(data [][]byte, codecType CodecType, treeCreatorFn TreeConstructorFn) (*ExtendedDataSquare, error) {
 	if codec, ok := codecs[codecType]; !ok {
 		return nil, errors.New("unsupported codecType")
 	} else {
@@ -24,7 +24,7 @@ func ComputeExtendedDataSquare(data [][]byte, codecType CodecType) (*ExtendedDat
 		}
 	}
 
-	ds, err := newDataSquare(data)
+	ds, err := newDataSquare(data, treeCreatorFn)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func ComputeExtendedDataSquare(data [][]byte, codecType CodecType) (*ExtendedDat
 }
 
 // ImportExtendedDataSquare imports an extended data square, represented as flattened chunks of data.
-func ImportExtendedDataSquare(data [][]byte, codecType CodecType) (*ExtendedDataSquare, error) {
+func ImportExtendedDataSquare(data [][]byte, codecType CodecType, treeCreatorFn TreeConstructorFn) (*ExtendedDataSquare, error) {
 	if codec, ok := codecs[codecType]; !ok {
 		return nil, errors.New("unsupported codecType")
 	} else {
@@ -47,7 +47,7 @@ func ImportExtendedDataSquare(data [][]byte, codecType CodecType) (*ExtendedData
 			return nil, errors.New("number of chunks exceeds the maximum")
 		}
 	}
-	ds, err := newDataSquare(data)
+	ds, err := newDataSquare(data, treeCreatorFn)
 	if err != nil {
 		return nil, err
 	}
@@ -299,6 +299,6 @@ func (eds *ExtendedDataSquare) parallelExtend(workers int) error {
 }
 
 func (eds *ExtendedDataSquare) deepCopy() (ExtendedDataSquare, error) {
-	eds, err := ImportExtendedDataSquare(eds.flattened(), eds.codec)
+	eds, err := ImportExtendedDataSquare(eds.flattened(), eds.codec, eds.createTreeFn)
 	return *eds, err
 }
