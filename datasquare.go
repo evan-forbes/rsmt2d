@@ -3,9 +3,11 @@ package rsmt2d
 import (
 	"errors"
 	"math"
+	"sync"
 )
 
 type dataSquare struct {
+	mut          *sync.Mutex
 	square       [][][]byte
 	width        uint
 	chunkSize    uint
@@ -37,6 +39,7 @@ func newDataSquare(data [][]byte, treeCreator TreeConstructorFn) (*dataSquare, e
 		width:        uint(width),
 		chunkSize:    uint(chunkSize),
 		createTreeFn: treeCreator,
+		mut:          &sync.Mutex{},
 	}, nil
 }
 

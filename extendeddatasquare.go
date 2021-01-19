@@ -154,6 +154,8 @@ func (eds *ExtendedDataSquare) fillRight(row uint, codec CodecType) error {
 	if err != nil {
 		return err
 	}
+	eds.mut.Lock()
+	defer eds.mut.Unlock()
 	if err := eds.setRowSlice(row, eds.originalDataWidth, shares); err != nil {
 		return err
 	}
@@ -168,6 +170,8 @@ func (eds *ExtendedDataSquare) fillDown(col uint, codec CodecType) error {
 	if err != nil {
 		return err
 	}
+	eds.mut.Lock()
+	defer eds.mut.Unlock()
 	if err := eds.setColumnSlice(eds.originalDataWidth, col, shares); err != nil {
 		return err
 	}
